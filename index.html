@@ -2,259 +2,248 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-  <title>Pieza 3D asimétrica – Definición + Visor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Azimut 3D – Prototipo</title>
   <style>
-    html, body { height: 100%; margin: 0; background: #0b0f14; color: #e6eef7; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial; }
-    .wrap { display: grid; grid-template-columns: 360px 1fr; min-height: 100vh; }
-    aside { padding: 18px 16px; border-right: 1px solid rgba(255,255,255,.08); overflow: auto; }
-    pre { white-space: pre-wrap; word-break: break-word; background: rgba(255,255,255,.04); padding: 12px; border-radius: 10px; }
-    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; }
-    #scene { position: relative; width: 100%; height: 100vh; min-height: 400px; display: block; }
-    canvas { display: block; width: 100%; height: 100%; }
-    .hint { opacity: .8; font-size: 12px; }
-    .badge { display:inline-block; padding:4px 8px; border-radius:999px; background:#1e293b; font-size:11px; margin-bottom:6px; }
-  .err{position:absolute;left:12px;bottom:12px;background:#7f1d1d;color:#fee2e2;padding:8px 10px;border-radius:8px;font-size:12px;display:none;z-index:5}
-</style>
+    :root {
+      --ok: #2ecc71; /* verde */
+      --bad: #e74c3c; /* rojo */
+      --bg: #0b0f14;
+      --fg: #e6eef7;
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      touch-action: none;
+    }
+    .app {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-height: 100dvh;
+      padding: 24px 18px;
+      box-sizing: border-box;
+      gap: 24px;
+    }
+    .target {
+      text-align: center;
+      font-size: 18px;
+      letter-spacing: 0.5px;
+      opacity: 0.9;
+      user-select: none;
+    }
+    .dots {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 28px;
+    }
+    .dot {
+      width: 72px;
+      height: 72px;
+      border-radius: 999px;
+      background: var(--bad);
+      box-shadow: 0 0 0 4px rgba(255,255,255,0.06) inset,
+                  0 10px 25px rgba(0,0,0,0.35);
+      transition: background 120ms linear, transform 120ms ease;
+    }
+    .dot.ok { background: var(--ok); transform: scale(1.02); }
+
+    .start-overlay {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(180deg, rgba(9,12,17,0.96), rgba(9,12,17,0.96));
+      z-index: 10;
+    }
+    .start-card {
+      text-align: center;
+      padding: 22px 20px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.04);
+      backdrop-filter: blur(6px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      max-width: 520px;
+      margin: 0 16px;
+    }
+    .start-card h1 { font-size: 20px; margin: 0 0 8px; }
+    .start-card p { opacity: .85; font-size: 14px; margin: 0 0 16px; }
+    .btn {
+      -webkit-tap-highlight-color: transparent;
+      appearance: none;
+      border: none;
+      border-radius: 999px;
+      padding: 14px 18px;
+      font-size: 16px;
+      font-weight: 600;
+      color: #0b0f14;
+      background: #e6eef7;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+    }
+    .btn:active { transform: translateY(1px); }
+
+    .footer { height: 1px; }
+  </style>
 </head>
 <body>
-  <div class="wrap">
-    <aside>
-      <div class="badge">Definición matemática (unidad ≈ 1)</div>
-      <pre><code id="math"></code></pre>
-      <p class="hint">Arrastra con el ratón / dedo para orbitar. Rueda / pellizca para zoom. Pulsa <b>Espacio</b> para alternar <i>proyección de sombra</i>.</p>
-    </aside>
-    <div id="scene"><div id="err" class="err"></div></div>
+  <div class="app">
+    <!-- Arriba: dirección objetivo (texto minimal) -->
+    <div class="target" id="targetText">—</div>
+
+    <!-- Centro: tres bolitas sin etiquetas -->
+    <div class="dots">
+      <div class="dot" id="dotA"></div>
+      <div class="dot" id="dotP"></div>
+      <div class="dot" id="dotR"></div>
+    </div>
+
+    <div class="footer"></div>
   </div>
 
-  <script type="importmap">
-{
-  "imports": {
-    "three": "https://unpkg.com/three@0.161.0/build/three.module.js"
-  }
-}
-</script>
-<script type="module">
-import * as THREE from 'three';
-import { OrbitControls } from 'https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js';
+  <!-- Overlay de inicio para pedir permiso de sensores (iOS exige gesto del usuario) -->
+  <div class="start-overlay" id="startOverlay">
+    <div class="start-card">
+      <h1>Azimut 3D</h1>
+      <p>Toca para iniciar y permitir los sensores de orientación.</p>
+      <button class="btn" id="startBtn">Empezar</button>
+    </div>
+  </div>
 
-// ==== Parámetros de juego ====
-const TOL = 12;          // tolerancia angular (°) por eje
-const HOLD_MS = 450;     // ms que debes mantener la orientación correcta
-const FALL_SPEED = 0.9;  // velocidad base de caída
+  <script>
+    // ===== Utilidades =====
+    const TOL = 15; // tolerancia fija en grados (simple, sin niveles)
+    const HOLD_MS = 500; // tiempo que deben estar las 3 en verde para validar
 
-// ==== Escena base ====
-const sceneEl = document.getElementById('scene');
-const errEl   = document.getElementById('err');
-const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
-renderer.setPixelRatio(Math.min(2, window.devicePixelRatio||1));
-sceneEl.appendChild(renderer.domElement);
+    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
-camera.position.set(2.6, 2.0, 2.2);
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-
-scene.add(new THREE.AxesHelper(1.0));
-const grid = new THREE.GridHelper(8, 16, 0x334155, 0x1f2937); grid.rotation.x=Math.PI/2; grid.position.z=-0.2; scene.add(grid);
-
-// ==== Geometría de la pieza asimétrica (igual que antes) ====
-const V = {
-  B1: new THREE.Vector3(0.00, 0.00, 0.00),
-  B2: new THREE.Vector3(1.30, 0.20, 0.00),
-  B3: new THREE.Vector3(-0.40, 1.10, 0.00),
-  A : new THREE.Vector3(0.18,-0.12, 1.10),
-};
-function pyramidGeom(){
-  const geom=new THREE.BufferGeometry(); const v=[];
-  const push=(a,b,c)=>v.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z);
-  push(V.A,V.B1,V.B2); push(V.A,V.B2,V.B3); push(V.A,V.B3,V.B1); push(V.B1,V.B2,V.B3);
-  geom.setAttribute('position', new THREE.Float32BufferAttribute(v,3)); geom.computeVertexNormals(); return geom;
-}
-const piece = new THREE.Group();
-const pyramid=new THREE.Mesh(pyramidGeom(), new THREE.MeshNormalMaterial()); piece.add(pyramid);
-const faces=[
-  { verts:['A','B1','B2'], h:0.25, r:0.10, tilt:6,  off:[0.20,0.30,0.50] },
-  { verts:['A','B2','B3'], h:0.40, r:0.08, tilt:11, off:[0.15,0.70,0.15] },
-  { verts:['A','B3','B1'], h:0.60, r:0.12, tilt:4,  off:[0.55,0.25,0.20] },
-  { verts:['B1','B2','B3'], h:0.85, r:0.06, tilt:15, off:[0.30,0.15,0.55] },
-];
-function bary([u,v,w], P,Q,R){ return new THREE.Vector3().addScaledVector(P,u).addScaledVector(Q,v).addScaledVector(R,w); }
-function cylOnFace(f){
-  const a=V[f.verts[0]], b=V[f.verts[1]], c=V[f.verts[2]];
-  const p=bary(f.off,a,b,c);
-  const n=new THREE.Vector3().crossVectors(new THREE.Vector3().subVectors(b,a), new THREE.Vector3().subVectors(c,a)).normalize();
-  const axis=n.clone(); const tiltAxis=new THREE.Vector3().subVectors(b,a).normalize();
-  axis.applyAxisAngle(tiltAxis, THREE.MathUtils.degToRad(f.tilt));
-  const mesh=new THREE.Mesh(new THREE.CylinderGeometry(f.r,f.r,f.h,24), new THREE.MeshNormalMaterial());
-  const q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), axis); mesh.quaternion.copy(q);
-  mesh.position.copy(p.clone().addScaledVector(axis, f.h/2));
-  return mesh;
-}
-faces.forEach(fc=>piece.add(cylOnFace(fc)));
-scene.add(piece);
-
-// ==== Portal / Hueco (marco simple que se ilumina al acertar) ====
-const gate = new THREE.Group();
-const frameMat = new THREE.MeshBasicMaterial({ color: 0x334155 });
-const okMat    = new THREE.MeshBasicMaterial({ color: 0x22c55e });
-function makeFrame(){
-  const s=1.8, t=0.08; // tamaño del marco
-  const parts=[
-    new THREE.Mesh(new THREE.BoxGeometry(s,t,t), frameMat),
-    new THREE.Mesh(new THREE.BoxGeometry(s,t,t), frameMat),
-    new THREE.Mesh(new THREE.BoxGeometry(t,s,t), frameMat),
-    new THREE.Mesh(new THREE.BoxGeometry(t,s,t), frameMat),
-  ];
-  parts[0].position.set(0, s/2, 0); // top
-  parts[1].position.set(0,-s/2, 0); // bottom
-  parts[2].position.set( s/2,0, 0); // right
-  parts[3].position.set(-s/2,0, 0); // left
-  parts.forEach(p=>gate.add(p));
-}
-makeFrame();
-scene.add(gate);
-
-// Posiciones base
-gate.position.set(0,0,-0.6); // portal delante
-piece.position.set(0,0,1.6); // pieza arriba para que "caiga"
-
-// ==== Objetivo (orientación del portal) ====
-let target = randomTarget();
-applyTargetToGate();
-
-function randomTarget(){
-  return {
-    az: Math.random()*360,
-    pitch: -10 + Math.random()*70,  // cómodo para muñeca
-    roll:  -35 + Math.random()*70,
-  };
-}
-function applyTargetToGate(){
-  const q = eulerFromAPR(target.az, target.pitch, target.roll);
-  gate.quaternion.copy(q);
-}
-
-// ===== Lectura de sensores (opcional en móvil) =====
-let hasSensors=false, started=false;
-const overlay = document.createElement('div');
-overlay.style.cssText = 'position:fixed;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.55);z-index:9';
-overlay.innerHTML = '<button id="btnStart" style="padding:12px 16px;border-radius:10px;border:0;background:#e6eef7;color:#0b0f14;font-weight:700">Usar sensores</button>';
-function addOverlay(){ document.body.appendChild(overlay); document.getElementById('btnStart').onclick=startSensors; }
-
-async function startSensors(){
-  try{
-    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
-      const perm = await DeviceOrientationEvent.requestPermission();
-      if (perm !== 'granted') throw new Error('Permiso denegado');
+    // Diferencia angular mínima en círculo 0..360
+    function deltaAngle360(a, b) {
+      let d = Math.abs(a - b) % 360;
+      return d > 180 ? 360 - d : d;
     }
-    window.addEventListener('deviceorientation', onOrientation, { passive:true });
-    hasSensors = true; started=true; overlay.remove();
-  }catch(e){ console.warn(e); overlay.remove(); }
-}
 
-function onOrientation(e){ // actualiza la rotación de la pieza según el móvil
-  if (!started) return;
-  let az;
-  if (typeof e.webkitCompassHeading === 'number') az = e.webkitCompassHeading; else az = 360 - (e.alpha||0);
-  if (az<0) az+=360; if (az>=360) az-=360;
-  const pitch = THREE.MathUtils.clamp(e.beta||0, -90, 90);
-  const roll  = THREE.MathUtils.clamp(e.gamma||0,-90, 90);
-  const q = eulerFromAPR(az, pitch, roll);
-  piece.quaternion.slerp(q, 0.25); // suavizado
-}
-
-// Fallback: en escritorio, usa OrbitControls para rotar la CÁMARA; la pieza gira lentamente
-let demoSpin = 0;
-
-// ===== Utilidades de ángulos =====
-function delta360(a,b){ let d=Math.abs(a-b)%360; return d>180?360-d:d; }
-function delta180(a,b){ let d=a-b; while(d>180)d-=360; while(d<-180)d+=360; return Math.abs(d); }
-
-function eulerFromAPR(az, pitch, roll){
-  // Convención: Z-up; aplicamos Yaw(Z), Pitch(X), Roll(Y) para algo intuitivo
-  const e = new THREE.Euler(
-    THREE.MathUtils.degToRad(pitch),  // X
-    THREE.MathUtils.degToRad(roll),   // Y
-    THREE.MathUtils.degToRad(az),     // Z
-    'XYZ'
-  );
-  const q = new THREE.Quaternion().setFromEuler(e);
-  return q;
-}
-
-// ===== Bucle del juego =====
-let lastAllOkAt = 0;
-let passing = false; // animación de pasar por el portal
-
-function resize(){
-  const asideW = document.querySelector('aside')?.offsetWidth || 360;
-  const w = Math.max(1, window.innerWidth - asideW);
-  const h = Math.max(1, window.innerHeight);
-  renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix();
-}
-resize(); window.addEventListener('resize', resize); window.addEventListener('orientationchange', ()=>setTimeout(resize,120));
-
-function tick(t){
-  // Caída constante
-  if (!passing){ piece.position.z -= FALL_SPEED * 0.006; }
-  if (piece.position.z < gate.position.z - 0.3){ resetPiece(); }
-
-  // Si no hay sensores, rotación demo para que no esté quieta
-  if (!hasSensors){ demoSpin += 0.005; piece.rotation.z += 0.01; piece.rotation.x = Math.sin(demoSpin)*0.3; }
-
-  // Comprobar tolerancias (comparando la rotación actual de la pieza con el objetivo)
-  const {az:pAz, pitch:pPi, roll:pRo} = getAPRFromQuat(piece.quaternion);
-  const okA = delta360(pAz, target.az)   <= TOL;
-  const okP = Math.abs(pPi - target.pitch) <= TOL;
-  const okR = delta180(pRo, target.roll)  <= TOL;
-  const allOk = okA && okP && okR;
-
-  // Color del portal (feedback): verde si dentro, gris si fuera
-  gate.traverse(o=>{ if(o.isMesh){ o.material = allOk ? okMat : frameMat; }});
-
-  const now = performance.now();
-  if (allOk){
-    if (lastAllOkAt===0) lastAllOkAt = now;
-    if (now - lastAllOkAt >= HOLD_MS){
-      // animación de atravesar
-      passing = true;
-      piece.position.z = THREE.MathUtils.lerp(piece.position.z, gate.position.z - 0.1, 0.3);
-      setTimeout(()=>{ newRound(); }, 250);
-      lastAllOkAt = 0;
+    // Diferencia absoluta para ángulos -180..180
+    function deltaAngle180(a, b) {
+      let d = (a - b);
+      while (d > 180) d -= 360;
+      while (d < -180) d += 360;
+      return Math.abs(d);
     }
-  } else {
-    lastAllOkAt = 0;
-  }
 
-  controls.update();
-  renderer.render(scene,camera);
-  requestAnimationFrame(tick);
-}
-requestAnimationFrame(tick);
+    // Formato de los objetivos en texto minimal
+    function fmtTarget(t) {
+      const az = Math.round(t.az);
+      const p  = Math.round(t.pitch);
+      const r  = Math.round(t.roll);
+      const sign = (x)=> (x>0? "+" : (x<0? "−" : "±"));
+      return `${az}° / ${sign(p)}${Math.abs(p)}° / ${sign(r)}${Math.abs(r)}°`;
+    }
 
-function resetPiece(){
-  passing = false;
-  piece.position.set(0,0,1.6);
-}
+    // Generación de objetivo sencillo, cómodo para el cuello y muñeca
+    function newTarget() {
+      return {
+        az: Math.random() * 360,        // 0..360
+        pitch: (Math.random() * 90) - 15, // −15..+75 aprox
+        roll:  (Math.random() * 80) - 40  // −40..+40
+      };
+    }
 
-function newRound(){
-  resetPiece();
-  target = randomTarget();
-  applyTargetToGate();
-}
+    // ===== Estado =====
+    let target = newTarget();
+    let lastAllOkAt = 0;
+    let started = false;
 
-function getAPRFromQuat(q){
-  const e = new THREE.Euler().setFromQuaternion(q, 'XYZ');
-  const pitch = THREE.MathUtils.radToDeg(e.x);
-  const roll  = THREE.MathUtils.radToDeg(e.y);
-  const az    = THREE.MathUtils.radToDeg(e.z);
-  return { az:((az%360)+360)%360, pitch, roll };
-}
+    const targetText = document.getElementById('targetText');
+    const dotA = document.getElementById('dotA');
+    const dotP = document.getElementById('dotP');
+    const dotR = document.getElementById('dotR');
+    const startOverlay = document.getElementById('startOverlay');
+    const startBtn = document.getElementById('startBtn');
 
-// Mostrar botón de sensores si está disponible
-if (window.DeviceOrientationEvent){ addOverlay(); }
-</script>
+    function applyTargetText() {
+      targetText.textContent = fmtTarget(target);
+    }
+    applyTargetText();
+
+    // ===== Lectura de sensores (DeviceOrientation) =====
+    let hasCompassHeading = false;
+
+    function onOrientation(e) {
+      if (!started) return;
+
+      // iOS: webkitCompassHeading (0=Norte, creciente hacia la derecha) si existe
+      let az;
+      if (typeof e.webkitCompassHeading === 'number') {
+        az = e.webkitCompassHeading; // ya 0..360
+        hasCompassHeading = true;
+      } else if (typeof e.alpha === 'number') {
+        // alpha: 0..360, pero puede necesitar ajustes según el frame de referencia
+        az = 360 - e.alpha; // invertir para aproximar a brújula tradicional
+        if (az < 0) az += 360;
+      } else {
+        az = 0;
+      }
+
+      // beta ~ pitch (−180..180). En la práctica útil ~ −90..90
+      // gamma ~ roll (−90..90)
+      const pitch = clamp(e.beta ?? 0, -90, 90);
+      const roll  = clamp(e.gamma ?? 0, -90, 90);
+
+      // Calcular si cada eje está dentro de tolerancia
+      const okA = deltaAngle360(az, target.az) <= TOL;
+      const okP = Math.abs(pitch - target.pitch) <= TOL;
+      const okR = deltaAngle180(roll, target.roll) <= TOL;
+
+      dotA.classList.toggle('ok', okA);
+      dotP.classList.toggle('ok', okP);
+      dotR.classList.toggle('ok', okR);
+
+      const now = performance.now();
+      if (okA && okP && okR) {
+        if (lastAllOkAt === 0) lastAllOkAt = now;
+        if (now - lastAllOkAt >= HOLD_MS) {
+          // Nuevo objetivo
+          target = newTarget();
+          applyTargetText();
+          lastAllOkAt = 0;
+          // breve flash visual opcional
+          document.body.animate([
+            { filter: 'brightness(1.0)' },
+            { filter: 'brightness(1.25)' },
+            { filter: 'brightness(1.0)' }
+          ], { duration: 220, easing: 'ease-out' });
+        }
+      } else {
+        lastAllOkAt = 0;
+      }
+    }
+
+    // ===== Inicio con permiso (iOS requiere gesto del usuario) =====
+    async function startSensors() {
+      try {
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+          const perm = await DeviceOrientationEvent.requestPermission();
+          if (perm !== 'granted') throw new Error('Permiso denegado');
+        }
+        window.addEventListener('deviceorientation', onOrientation, { passive: true });
+        startOverlay.style.display = 'none';
+        started = true;
+      } catch (err) {
+        alert('No se pudieron activar los sensores: ' + (err && err.message ? err.message : err));
+      }
+    }
+
+    startBtn.addEventListener('click', startSensors);
+
+    // Mejora: re-generar objetivo al rotar de orientación de pantalla (opcional)
+    window.addEventListener('orientationchange', () => {
+      // sin lógica extra por ahora, mantenemos el objetivo actual
+    });
+  </script>
 </body>
 </html>
