@@ -27,10 +27,10 @@
     <div id="scene"><div id="err" class="err"></div></div>
   </div>
 
-  <script type="module">
-// Usamos ES Modules con versiones CONSISTENTES desde jsDelivr
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js';
-import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/controls/OrbitControls.js';
+<script type="module">
+  import * as THREE from 'https://unpkg.com/three@0.161.0/build/three.module.js';
+  import { OrbitControls } from 'https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js';
+  // resto igual
 
 const sceneEl = document.getElementById('scene');
 const errEl   = document.getElementById('err');
@@ -98,3 +98,4 @@ resize(); window.addEventListener('resize', resize); window.addEventListener('or
 </script>
 </body>
 </html>
+
