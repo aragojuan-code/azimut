@@ -32,209 +32,98 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.161.0/examples/js/controls/OrbitControls.js"></script>
 
   <script>
-  // ==========================
-  // 1) Definición matemática
-  // ==========================
-  // Pirámide oblicua con base triangular ESCALENA y ápice desplazado
-  // Vértices (en unidades arbitrarias):
+// --- Build a minimal working viewer (safe version) ---
+// If you still don't see it, the problem is not the 3D code.
+(function(){
+  const sceneEl = document.getElementById('scene');
+  const errEl   = document.getElementById('err');
+  function showErr(msg){ if(errEl){ errEl.style.display='block'; errEl.textContent=msg; } }
+  if(!window.THREE){ showErr('No se cargó Three.js'); return; }
+
+  // Scene & renderer
+  const scene = new THREE.Scene();
+  const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio||1));
+  sceneEl.appendChild(renderer.domElement);
+
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
+  camera.position.set(2.6, 2.0, 2.2);
+
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+
+  // Helpers
+  scene.add(new THREE.AxesHelper(1.2));
+  const g = new THREE.GridHelper(8, 16, 0x334155, 0x1f2937); g.rotation.x=Math.PI/2; g.position.z=-0.2; scene.add(g);
+
+  // --- Geometry: Asymmetric pyramid + cylinders ---
   const V = {
-    B1: new THREE.Vector3( 0.00, 0.00, 0.00),
-    B2: new THREE.Vector3( 1.30, 0.20, 0.00),
+    B1: new THREE.Vector3(0.00, 0.00, 0.00),
+    B2: new THREE.Vector3(1.30, 0.20, 0.00),
     B3: new THREE.Vector3(-0.40, 1.10, 0.00),
-    A : new THREE.Vector3( 0.18,-0.12, 1.10), // ápice oblicuo
+    A : new THREE.Vector3(0.18,-0.12, 1.10),
   };
 
-  // Caras triangulares: cada cara define también una zona donde irá un cilindro
-  // Índices y parámetros de salientes (uno por cara, todos distintos):
-  const FACES = [
-    // id, vertices,   cilindro: {altura h, radio r, tilt grados, offset baricéntrico (u,v,w)}
-    { id:'F1', verts:['A','B1','B2'], cyl:{ h:0.25, r:0.10, tilt:  6, offset:[0.20,0.30,0.50] } },
-    { id:'F2', verts:['A','B2','B3'], cyl:{ h:0.40, r:0.08, tilt: 11, offset:[0.15,0.70,0.15] } },
-    { id:'F3', verts:['A','B3','B1'], cyl:{ h:0.60, r:0.12, tilt:  4, offset:[0.55,0.25,0.20] } },
-    // Opcional: saliente en la base. Descomenta para añadir un cuarto cilindro.
-    { id:'BASE', verts:['B1','B2','B3'], cyl:{ h:0.85, r:0.06, tilt: 15, offset:[0.30,0.15,0.55] } },
-  ];
-
-  // Utilidad: combinación baricéntrica p = u*P1 + v*P2 + w*P3, con u+v+w=1
-  function baryPoint(u,v,w, P1,P2,P3){
-    return new THREE.Vector3().addScaledVector(P1,u).addScaledVector(P2,v).addScaledVector(P3,w);
-  }
-
-  // ==========================
-  // 2) Construcción de la malla
-  // ==========================
-  function buildPyramid(){
+  function pyramidGeom(){
     const geom = new THREE.BufferGeometry();
-    const verts = [];
-    const pushTri = (p,q,r)=>{ verts.push(p.x,p.y,p.z, q.x,q.y,q.z, r.x,r.y,r.z); };
-    // Caras laterales
-    pushTri(V.A, V.B1, V.B2);
-    pushTri(V.A, V.B2, V.B3);
-    pushTri(V.A, V.B3, V.B1);
-    // Base
-    pushTri(V.B1, V.B2, V.B3);
+    const push=(a,b,c)=>verts.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z);
+    const verts=[];
+    push(V.A,V.B1,V.B2);
+    push(V.A,V.B2,V.B3);
+    push(V.A,V.B3,V.B1);
+    push(V.B1,V.B2,V.B3);
     geom.setAttribute('position', new THREE.Float32BufferAttribute(verts,3));
     geom.computeVertexNormals();
     return geom;
   }
 
-  // Crear cilindro sobre una cara (con tilt y offset únicos)
-  function cylinderOnFace(face){
-    const [a,b,c] = face.verts.map(k=>V[k]);
-    const p = baryPoint(face.cyl.offset[0], face.cyl.offset[1], face.cyl.offset[2], a,b,c);
-    // Normal de la cara
-    const ab = new THREE.Vector3().subVectors(b,a);
-    const ac = new THREE.Vector3().subVectors(c,a);
-    const n  = new THREE.Vector3().crossVectors(ab,ac).normalize();
-
-    // Crear eje con un tilt (inclinación) respecto a la normal
-    const axis = n.clone();
-    // Tilt alrededor de un vector en el plano de la cara (usa ab normalizado)
-    const tiltAxis = ab.clone().normalize();
-    const m = new THREE.Matrix4().makeRotationAxis(tiltAxis, THREE.MathUtils.degToRad(face.cyl.tilt));
-    axis.applyMatrix4(m).normalize();
-
-    // Geometría del cilindro (altura h, radio r):
-    const h = face.cyl.h, r = face.cyl.r;
-    const g = new THREE.CylinderGeometry(r, r, h, 24);
-    const mat = new THREE.MeshStandardMaterial({ color: 0xd46f4d, roughness: 0.6, metalness: 0.1 });
-    const cyl = new THREE.Mesh(g, mat);
-
-    // Orientar cilindro para que su eje Y coincida con 'axis'
-    // Por defecto, el eje del cilindro es +Y. Calculamos cuaternión de Y->axis
-    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), axis);
-    cyl.quaternion.copy(q);
-
-    // Colocar su centro en p + axis*(h/2) para que “salga” de la cara
-    const center = p.clone().addScaledVector(axis, h/2);
-    cyl.position.copy(center);
-
-    return cyl;
-  }
-
-  // ==========================
-  // 3) Escena Three.js
-  // ==========================
-  if(!window.THREE){
-    const e=document.getElementById('err');
-    e.style.display='block';
-    e.textContent='No se pudo cargar Three.js desde la CDN. Tu navegador o red puede estar bloqueándolo.';
-  }
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0b0f14);
-// Ayudas visuales para confirmar render
-const axes = new THREE.AxesHelper(0.8); axes.position.set(0,0,0); scene.add(axes);
-const grid = new THREE.GridHelper(8, 16, 0x334155, 0x1f2937); grid.rotation.x = Math.PI/2; grid.position.z = -0.2; scene.add(grid);
-
-  const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
-renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-const sceneEl = document.getElementById('scene');
-renderer.shadowMap.enabled = true;
-sceneEl.appendChild(renderer.domElement);
-
-function resize(){
-  let w = sceneEl.clientWidth;
-  let h = sceneEl.clientHeight;
-  if (!w || !h) {
-    const asideW = document.querySelector('aside')?.offsetWidth || 360;
-    w = Math.max(1, window.innerWidth - asideW);
-    h = Math.max(1, window.innerHeight);
-  }
-  renderer.setSize(w, h, false);
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
-}
-resize();
-
-  const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
-  camera.position.set(2.6, -2.3, 1.8); // alejamos un poco para asegurar visión
-  camera.lookAt(0.3,0.3,0.4);
-
-  const controls = new THREE.OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-
-  // Luz direccional (para sombras)
-  const dir = new THREE.DirectionalLight(0xffffff, 1.0);
-  dir.position.set(2.5, 1.5, 3.0);
-  dir.castShadow = true;
-  dir.shadow.mapSize.set(2048,2048);
-  scene.add(dir);
-
-  scene.add(new THREE.AmbientLight(0xffffff, 0.35));
-
-  // Plano receptor (para ver la proyección/sombra)
-  const plane = new THREE.Mesh(
-    new THREE.PlaneGeometry(6,6),
-    new THREE.MeshBasicMaterial({ color: 0x111827, transparent:true, opacity:0.6 })
-  );
-  plane.rotation.x = -Math.PI/2;
-  plane.position.z = -0.2; // ligeramente por debajo
-  plane.receiveShadow = true;
-  scene.add(plane);
-
-  // Material del poliedro
-  const polyMat = new THREE.MeshStandardMaterial({ color: 0xf0b27a, metalness: 0.05, roughness: 0.65 });
-
-  // Pirámide
-  const pyramid = new THREE.Mesh(buildPyramid(), polyMat);
-  pyramid.castShadow = true;
+  const matPoly = new THREE.MeshNormalMaterial({flatShading:false});
+  const pyramid = new THREE.Mesh(pyramidGeom(), matPoly);
   scene.add(pyramid);
 
-  // Salientes
-  const group = new THREE.Group();
-  FACES.forEach(fc => group.add(cylinderOnFace(fc)));
-  group.traverse(o=>{ if(o.isMesh){ o.castShadow = true; }});
-  scene.add(group);
+  // Cylinders on faces
+  const faces = [
+    { verts:['A','B1','B2'], h:0.25, r:0.10, tilt: 6,  off:[0.20,0.30,0.50]},
+    { verts:['A','B2','B3'], h:0.40, r:0.08, tilt:11,  off:[0.15,0.70,0.15]},
+    { verts:['A','B3','B1'], h:0.60, r:0.12, tilt: 4,  off:[0.55,0.25,0.20]},
+    { verts:['B1','B2','B3'],h:0.85, r:0.06, tilt:15,  off:[0.30,0.15,0.55]},
+  ];
+  function bary([u,v,w], P,Q,R){ return new THREE.Vector3().addScaledVector(P,u).addScaledVector(Q,v).addScaledVector(R,w); }
+  function cylOnFace(f){
+    const a=V[f.verts[0]], b=V[f.verts[1]], c=V[f.verts[2]];
+    const p=bary(f.off,a,b,c);
+    const ab=new THREE.Vector3().subVectors(b,a);
+    const ac=new THREE.Vector3().subVectors(c,a);
+    const n=new THREE.Vector3().crossVectors(ab,ac).normalize();
+    const axis=n.clone();
+    const tiltAxis=ab.clone().normalize();
+    axis.applyAxisAngle(tiltAxis, THREE.MathUtils.degToRad(f.tilt));
+    const g=new THREE.CylinderGeometry(f.r,f.r,f.h,24);
+    const m=new THREE.MeshNormalMaterial();
+    const mesh=new THREE.Mesh(g,m);
+    const q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), axis);
+    mesh.quaternion.copy(q);
+    mesh.position.copy(p.clone().addScaledVector(axis, f.h/2));
+    return mesh;
+  }
+  const group=new THREE.Group(); faces.forEach(fc=>group.add(cylOnFace(fc))); scene.add(group);
 
-  // Fallback: si por algún motivo los materiales no renderizan, añadimos un cubo de prueba muy visible
-  const testCube = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5), new THREE.MeshBasicMaterial({color:0x22c55e, wireframe:false}));
-  testCube.position.set(0,0,0.3);
-  testCube.rotation.set(0.4,0.2,0.1);
-  scene.add(testCube);
-
-  // Texto matemático en el panel
-  const mathEl = document.getElementById('math');
-  const fmt = (v)=>`(${v.x.toFixed(2)}, ${v.y.toFixed(2)}, ${v.z.toFixed(2)})`;
-  const lines = [];
-  lines.push('Vértices:');
-  lines.push(`  A  = ${fmt(V.A)}`);
-  lines.push(`  B1 = ${fmt(V.B1)}`);
-  lines.push(`  B2 = ${fmt(V.B2)}`);
-  lines.push(`  B3 = ${fmt(V.B3)}`);
-  lines.push('\nCaras (triángulos):');
-  FACES.forEach(f=>{ lines.push(`  ${f.id}: ${f.verts.join('-')}`); });
-  lines.push('\nSalientes por cara (cilindros):');
-  FACES.forEach(f=>{
-    const c = f.cyl; lines.push(`  ${f.id}: h=${c.h}, r=${c.r}, tilt=${c.tilt}°, offset=[${c.offset.map(n=>n.toFixed(2)).join(', ')}]`);
-  });
-  mathEl.textContent = lines.join('\n');
-
-  // Alternar plano receptor/sombra con barra espaciadora
-  let showShadow = true;
-  window.addEventListener('keydown', (e)=>{
-    if(e.code === 'Space'){
-      showShadow = !showShadow;
-      plane.visible = showShadow;
-    }
-  });
-
-  // Resize
+  function resize(){
+    const asideW = document.querySelector('aside')?.offsetWidth || 360;
+    const w = Math.max(1, window.innerWidth - asideW);
+    const h = Math.max(1, window.innerHeight);
+    renderer.setSize(w,h,false);
+    camera.aspect = w/h; camera.updateProjectionMatrix();
+  }
+  resize();
   window.addEventListener('resize', resize);
-window.addEventListener('orientationchange', ()=> setTimeout(resize, 100)); camera.aspect = w/h; camera.updateProjectionMatrix();
-  });
+  window.addEventListener('orientationchange', ()=>setTimeout(resize,100));
 
-  // Animación
   (function loop(){
-  pyramid.rotation.z += 0.005; // rotación lenta para confirmar que se ve
-  group.rotation.z += 0.005;
-  controls.update();
-  renderer.render(scene, camera);
-  // Si el canvas no tiene tamaño visible, mostramos error
-  const e = document.getElementById('err');
-  const r = renderer.domElement.getBoundingClientRect();
-  if ((r.width|0)===0 || (r.height|0)===0){ e.style.display='block'; e.textContent='Canvas sin tamaño. Prueba recargar o ampliar la ventana.'; } else { e.style.display='none'; }
-  requestAnimationFrame(loop);
+    pyramid.rotation.z += 0.01; group.rotation.z += 0.01;
+    controls.update(); renderer.render(scene,camera); requestAnimationFrame(loop);
+  })();
 })();
-  </script>
+</script>
 </body>
 </html>
