@@ -27,10 +27,19 @@
     <div id="scene"><div id="err" class="err"></div></div>
   </div>
 
+<!-- Mapea el nombre 'three' a la URL del módulo -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js"
+  }
+}
+</script>
+
 <script type="module">
-  import * as THREE from 'https://unpkg.com/three@0.161.0/build/three.module.js';
+  import * as THREE from 'three';  // ← ahora SÍ
   import { OrbitControls } from 'https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js';
-  // resto igual
+
 
 const sceneEl = document.getElementById('scene');
 const errEl   = document.getElementById('err');
@@ -98,4 +107,5 @@ resize(); window.addEventListener('resize', resize); window.addEventListener('or
 </script>
 </body>
 </html>
+
 
