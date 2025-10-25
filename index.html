@@ -14,7 +14,8 @@
     canvas { display: block; width: 100%; height: 100%; }
     .hint { opacity: .8; font-size: 12px; }
     .badge { display:inline-block; padding:4px 8px; border-radius:999px; background:#1e293b; font-size:11px; margin-bottom:6px; }
-  </style>
+  .err{position:absolute;left:12px;bottom:12px;background:#7f1d1d;color:#fee2e2;padding:8px 10px;border-radius:8px;font-size:12px;display:none;z-index:5}
+</style>
 </head>
 <body>
   <div class="wrap">
@@ -23,12 +24,12 @@
       <pre><code id="math"></code></pre>
       <p class="hint">Arrastra con el ratón / dedo para orbitar. Rueda / pellizca para zoom. Pulsa <b>Espacio</b> para alternar <i>proyección de sombra</i>.</p>
     </aside>
-    <div id="scene"></div>
+    <div id="scene"><div id="err" class="err"></div></div>
   </div>
 
   <!-- Three.js + OrbitControls desde CDN -->
-  <script src="https://unpkg.com/three@0.161.0/build/three.min.js"></script>
-  <script src="https://unpkg.com/three@0.161.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.161.0/examples/js/controls/OrbitControls.js"></script>
 
   <script>
   // ==========================
@@ -114,6 +115,11 @@
   // ==========================
   // 3) Escena Three.js
   // ==========================
+  if(!window.THREE){
+    const e=document.getElementById('err');
+    e.style.display='block';
+    e.textContent='No se pudo cargar Three.js desde la CDN. Tu navegador o red puede estar bloqueándolo.';
+  }
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0b0f14);
 // Ayudas visuales para confirmar render
@@ -159,7 +165,7 @@ resize();
   // Plano receptor (para ver la proyección/sombra)
   const plane = new THREE.Mesh(
     new THREE.PlaneGeometry(6,6),
-    new THREE.ShadowMaterial({ opacity: 0.35 })
+    new THREE.MeshBasicMaterial({ color: 0x111827, transparent:true, opacity:0.6 })
   );
   plane.rotation.x = -Math.PI/2;
   plane.position.z = -0.2; // ligeramente por debajo
@@ -179,6 +185,12 @@ resize();
   FACES.forEach(fc => group.add(cylinderOnFace(fc)));
   group.traverse(o=>{ if(o.isMesh){ o.castShadow = true; }});
   scene.add(group);
+
+  // Fallback: si por algún motivo los materiales no renderizan, añadimos un cubo de prueba muy visible
+  const testCube = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5), new THREE.MeshBasicMaterial({color:0x22c55e, wireframe:false}));
+  testCube.position.set(0,0,0.3);
+  testCube.rotation.set(0.4,0.2,0.1);
+  scene.add(testCube);
 
   // Texto matemático en el panel
   const mathEl = document.getElementById('math');
@@ -217,6 +229,10 @@ window.addEventListener('orientationchange', ()=> setTimeout(resize, 100)); came
   group.rotation.z += 0.005;
   controls.update();
   renderer.render(scene, camera);
+  // Si el canvas no tiene tamaño visible, mostramos error
+  const e = document.getElementById('err');
+  const r = renderer.domElement.getBoundingClientRect();
+  if ((r.width|0)===0 || (r.height|0)===0){ e.style.display='block'; e.textContent='Canvas sin tamaño. Prueba recargar o ampliar la ventana.'; } else { e.style.display='none'; }
   requestAnimationFrame(loop);
 })();
   </script>
