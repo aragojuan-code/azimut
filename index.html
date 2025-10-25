@@ -10,7 +10,7 @@
     aside { padding: 18px 16px; border-right: 1px solid rgba(255,255,255,.08); overflow: auto; }
     pre { white-space: pre-wrap; word-break: break-word; background: rgba(255,255,255,.04); padding: 12px; border-radius: 10px; }
     code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; }
-    #scene { position: relative; height: 100dvh; /* asegura alto visible en móvil y desktop */ }
+    #scene { position: relative; width: 100%; height: 100vh; min-height: 400px; display: block; }
     canvas { display: block; width: 100%; height: 100%; }
     .hint { opacity: .8; font-size: 12px; }
     .badge { display:inline-block; padding:4px 8px; border-radius:999px; background:#1e293b; font-size:11px; margin-bottom:6px; }
@@ -116,16 +116,24 @@
   // ==========================
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0b0f14);
+// Ayudas visuales para confirmar render
+const axes = new THREE.AxesHelper(0.8); axes.position.set(0,0,0); scene.add(axes);
+const grid = new THREE.GridHelper(8, 16, 0x334155, 0x1f2937); grid.rotation.x = Math.PI/2; grid.position.z = -0.2; scene.add(grid);
 
-  const renderer = new THREE.WebGLRenderer({ antialias:true });
+  const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
 const sceneEl = document.getElementById('scene');
 renderer.shadowMap.enabled = true;
 sceneEl.appendChild(renderer.domElement);
 
 function resize(){
-  const rect = sceneEl.getBoundingClientRect();
-  const w = Math.max(1, rect.width);
-  const h = Math.max(1, rect.height);
+  let w = sceneEl.clientWidth;
+  let h = sceneEl.clientHeight;
+  if (!w || !h) {
+    const asideW = document.querySelector('aside')?.offsetWidth || 360;
+    w = Math.max(1, window.innerWidth - asideW);
+    h = Math.max(1, window.innerHeight);
+  }
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
@@ -133,7 +141,7 @@ function resize(){
 resize();
 
   const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
-  camera.position.set(2.2, -2.0, 1.6);
+  camera.position.set(2.6, -2.3, 1.8); // alejamos un poco para asegurar visión
   camera.lookAt(0.3,0.3,0.4);
 
   const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -205,10 +213,12 @@ window.addEventListener('orientationchange', ()=> setTimeout(resize, 100)); came
 
   // Animación
   (function loop(){
-    controls.update();
-    renderer.render(scene, camera);
-    requestAnimationFrame(loop);
-  })();
+  pyramid.rotation.z += 0.005; // rotación lenta para confirmar que se ve
+  group.rotation.z += 0.005;
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+})();
   </script>
 </body>
 </html>
