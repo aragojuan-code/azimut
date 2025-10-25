@@ -10,7 +10,7 @@
     aside { padding: 18px 16px; border-right: 1px solid rgba(255,255,255,.08); overflow: auto; }
     pre { white-space: pre-wrap; word-break: break-word; background: rgba(255,255,255,.04); padding: 12px; border-radius: 10px; }
     code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; }
-    #scene { position: relative; }
+    #scene { position: relative; height: 100dvh; /* asegura alto visible en móvil y desktop */ }
     canvas { display: block; width: 100%; height: 100%; }
     .hint { opacity: .8; font-size: 12px; }
     .badge { display:inline-block; padding:4px 8px; border-radius:999px; background:#1e293b; font-size:11px; margin-bottom:6px; }
@@ -118,11 +118,21 @@
   scene.background = new THREE.Color(0x0b0f14);
 
   const renderer = new THREE.WebGLRenderer({ antialias:true });
-  renderer.setSize(window.innerWidth - 360, window.innerHeight);
-  renderer.shadowMap.enabled = true;
-  document.getElementById('scene').appendChild(renderer.domElement);
+const sceneEl = document.getElementById('scene');
+renderer.shadowMap.enabled = true;
+sceneEl.appendChild(renderer.domElement);
 
-  const camera = new THREE.PerspectiveCamera(45, (window.innerWidth-360)/window.innerHeight, 0.01, 100);
+function resize(){
+  const rect = sceneEl.getBoundingClientRect();
+  const w = Math.max(1, rect.width);
+  const h = Math.max(1, rect.height);
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+resize();
+
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
   camera.position.set(2.2, -2.0, 1.6);
   camera.lookAt(0.3,0.3,0.4);
 
@@ -189,9 +199,8 @@
   });
 
   // Resize
-  window.addEventListener('resize', ()=>{
-    const w = window.innerWidth - 360; const h = window.innerHeight;
-    renderer.setSize(w,h); camera.aspect = w/h; camera.updateProjectionMatrix();
+  window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', ()=> setTimeout(resize, 100)); camera.aspect = w/h; camera.updateProjectionMatrix();
   });
 
   // Animación
