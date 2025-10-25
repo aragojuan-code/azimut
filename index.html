@@ -27,25 +27,25 @@
     <div id="scene"><div id="err" class="err"></div></div>
   </div>
 
-<!-- Mapea el nombre 'three' a la URL del módulo -->
-<script type="importmap">
+  <script type="importmap">
 {
   "imports": {
     "three": "https://unpkg.com/three@0.161.0/build/three.module.js"
   }
 }
 </script>
-
 <script type="module">
-  import * as THREE from 'three';  // ← ahora SÍ
-  import { OrbitControls } from 'https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js';
+import * as THREE from 'three';
+import { OrbitControls } from 'https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js';
 
+// ==== Parámetros de juego ====
+const TOL = 12;          // tolerancia angular (°) por eje
+const HOLD_MS = 450;     // ms que debes mantener la orientación correcta
+const FALL_SPEED = 0.9;  // velocidad base de caída
 
+// ==== Escena base ====
 const sceneEl = document.getElementById('scene');
 const errEl   = document.getElementById('err');
-function showErr(msg){ if(errEl){ errEl.style.display='block'; errEl.textContent=msg; } }
-
-// ===== Escena básica =====
 const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
 renderer.setPixelRatio(Math.min(2, window.devicePixelRatio||1));
 sceneEl.appendChild(renderer.domElement);
@@ -53,14 +53,13 @@ sceneEl.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
 camera.position.set(2.6, 2.0, 2.2);
-
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 
-scene.add(new THREE.AxesHelper(1.2));
+scene.add(new THREE.AxesHelper(1.0));
 const grid = new THREE.GridHelper(8, 16, 0x334155, 0x1f2937); grid.rotation.x=Math.PI/2; grid.position.z=-0.2; scene.add(grid);
 
-// ===== Geometría: pirámide oblicua + cilindros =====
+// ==== Geometría de la pieza asimétrica (igual que antes) ====
 const V = {
   B1: new THREE.Vector3(0.00, 0.00, 0.00),
   B2: new THREE.Vector3(1.30, 0.20, 0.00),
@@ -73,8 +72,8 @@ function pyramidGeom(){
   push(V.A,V.B1,V.B2); push(V.A,V.B2,V.B3); push(V.A,V.B3,V.B1); push(V.B1,V.B2,V.B3);
   geom.setAttribute('position', new THREE.Float32BufferAttribute(v,3)); geom.computeVertexNormals(); return geom;
 }
-const pyramid=new THREE.Mesh(pyramidGeom(), new THREE.MeshNormalMaterial()); scene.add(pyramid);
-
+const piece = new THREE.Group();
+const pyramid=new THREE.Mesh(pyramidGeom(), new THREE.MeshNormalMaterial()); piece.add(pyramid);
 const faces=[
   { verts:['A','B1','B2'], h:0.25, r:0.10, tilt:6,  off:[0.20,0.30,0.50] },
   { verts:['A','B2','B3'], h:0.40, r:0.08, tilt:11, off:[0.15,0.70,0.15] },
@@ -93,7 +92,101 @@ function cylOnFace(f){
   mesh.position.copy(p.clone().addScaledVector(axis, f.h/2));
   return mesh;
 }
-const group=new THREE.Group(); faces.forEach(fc=>group.add(cylOnFace(fc))); scene.add(group);
+faces.forEach(fc=>piece.add(cylOnFace(fc)));
+scene.add(piece);
+
+// ==== Portal / Hueco (marco simple que se ilumina al acertar) ====
+const gate = new THREE.Group();
+const frameMat = new THREE.MeshBasicMaterial({ color: 0x334155 });
+const okMat    = new THREE.MeshBasicMaterial({ color: 0x22c55e });
+function makeFrame(){
+  const s=1.8, t=0.08; // tamaño del marco
+  const parts=[
+    new THREE.Mesh(new THREE.BoxGeometry(s,t,t), frameMat),
+    new THREE.Mesh(new THREE.BoxGeometry(s,t,t), frameMat),
+    new THREE.Mesh(new THREE.BoxGeometry(t,s,t), frameMat),
+    new THREE.Mesh(new THREE.BoxGeometry(t,s,t), frameMat),
+  ];
+  parts[0].position.set(0, s/2, 0); // top
+  parts[1].position.set(0,-s/2, 0); // bottom
+  parts[2].position.set( s/2,0, 0); // right
+  parts[3].position.set(-s/2,0, 0); // left
+  parts.forEach(p=>gate.add(p));
+}
+makeFrame();
+scene.add(gate);
+
+// Posiciones base
+gate.position.set(0,0,-0.6); // portal delante
+piece.position.set(0,0,1.6); // pieza arriba para que "caiga"
+
+// ==== Objetivo (orientación del portal) ====
+let target = randomTarget();
+applyTargetToGate();
+
+function randomTarget(){
+  return {
+    az: Math.random()*360,
+    pitch: -10 + Math.random()*70,  // cómodo para muñeca
+    roll:  -35 + Math.random()*70,
+  };
+}
+function applyTargetToGate(){
+  const q = eulerFromAPR(target.az, target.pitch, target.roll);
+  gate.quaternion.copy(q);
+}
+
+// ===== Lectura de sensores (opcional en móvil) =====
+let hasSensors=false, started=false;
+const overlay = document.createElement('div');
+overlay.style.cssText = 'position:fixed;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.55);z-index:9';
+overlay.innerHTML = '<button id="btnStart" style="padding:12px 16px;border-radius:10px;border:0;background:#e6eef7;color:#0b0f14;font-weight:700">Usar sensores</button>';
+function addOverlay(){ document.body.appendChild(overlay); document.getElementById('btnStart').onclick=startSensors; }
+
+async function startSensors(){
+  try{
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+      const perm = await DeviceOrientationEvent.requestPermission();
+      if (perm !== 'granted') throw new Error('Permiso denegado');
+    }
+    window.addEventListener('deviceorientation', onOrientation, { passive:true });
+    hasSensors = true; started=true; overlay.remove();
+  }catch(e){ console.warn(e); overlay.remove(); }
+}
+
+function onOrientation(e){ // actualiza la rotación de la pieza según el móvil
+  if (!started) return;
+  let az;
+  if (typeof e.webkitCompassHeading === 'number') az = e.webkitCompassHeading; else az = 360 - (e.alpha||0);
+  if (az<0) az+=360; if (az>=360) az-=360;
+  const pitch = THREE.MathUtils.clamp(e.beta||0, -90, 90);
+  const roll  = THREE.MathUtils.clamp(e.gamma||0,-90, 90);
+  const q = eulerFromAPR(az, pitch, roll);
+  piece.quaternion.slerp(q, 0.25); // suavizado
+}
+
+// Fallback: en escritorio, usa OrbitControls para rotar la CÁMARA; la pieza gira lentamente
+let demoSpin = 0;
+
+// ===== Utilidades de ángulos =====
+function delta360(a,b){ let d=Math.abs(a-b)%360; return d>180?360-d:d; }
+function delta180(a,b){ let d=a-b; while(d>180)d-=360; while(d<-180)d+=360; return Math.abs(d); }
+
+function eulerFromAPR(az, pitch, roll){
+  // Convención: Z-up; aplicamos Yaw(Z), Pitch(X), Roll(Y) para algo intuitivo
+  const e = new THREE.Euler(
+    THREE.MathUtils.degToRad(pitch),  // X
+    THREE.MathUtils.degToRad(roll),   // Y
+    THREE.MathUtils.degToRad(az),     // Z
+    'XYZ'
+  );
+  const q = new THREE.Quaternion().setFromEuler(e);
+  return q;
+}
+
+// ===== Bucle del juego =====
+let lastAllOkAt = 0;
+let passing = false; // animación de pasar por el portal
 
 function resize(){
   const asideW = document.querySelector('aside')?.offsetWidth || 360;
@@ -101,11 +194,67 @@ function resize(){
   const h = Math.max(1, window.innerHeight);
   renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix();
 }
-resize(); window.addEventListener('resize', resize); window.addEventListener('orientationchange', ()=>setTimeout(resize,100));
+resize(); window.addEventListener('resize', resize); window.addEventListener('orientationchange', ()=>setTimeout(resize,120));
 
-(function loop(){ pyramid.rotation.z+=0.01; group.rotation.z+=0.01; controls.update(); renderer.render(scene,camera); requestAnimationFrame(loop); })();
+function tick(t){
+  // Caída constante
+  if (!passing){ piece.position.z -= FALL_SPEED * 0.006; }
+  if (piece.position.z < gate.position.z - 0.3){ resetPiece(); }
+
+  // Si no hay sensores, rotación demo para que no esté quieta
+  if (!hasSensors){ demoSpin += 0.005; piece.rotation.z += 0.01; piece.rotation.x = Math.sin(demoSpin)*0.3; }
+
+  // Comprobar tolerancias (comparando la rotación actual de la pieza con el objetivo)
+  const {az:pAz, pitch:pPi, roll:pRo} = getAPRFromQuat(piece.quaternion);
+  const okA = delta360(pAz, target.az)   <= TOL;
+  const okP = Math.abs(pPi - target.pitch) <= TOL;
+  const okR = delta180(pRo, target.roll)  <= TOL;
+  const allOk = okA && okP && okR;
+
+  // Color del portal (feedback): verde si dentro, gris si fuera
+  gate.traverse(o=>{ if(o.isMesh){ o.material = allOk ? okMat : frameMat; }});
+
+  const now = performance.now();
+  if (allOk){
+    if (lastAllOkAt===0) lastAllOkAt = now;
+    if (now - lastAllOkAt >= HOLD_MS){
+      // animación de atravesar
+      passing = true;
+      piece.position.z = THREE.MathUtils.lerp(piece.position.z, gate.position.z - 0.1, 0.3);
+      setTimeout(()=>{ newRound(); }, 250);
+      lastAllOkAt = 0;
+    }
+  } else {
+    lastAllOkAt = 0;
+  }
+
+  controls.update();
+  renderer.render(scene,camera);
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+function resetPiece(){
+  passing = false;
+  piece.position.set(0,0,1.6);
+}
+
+function newRound(){
+  resetPiece();
+  target = randomTarget();
+  applyTargetToGate();
+}
+
+function getAPRFromQuat(q){
+  const e = new THREE.Euler().setFromQuaternion(q, 'XYZ');
+  const pitch = THREE.MathUtils.radToDeg(e.x);
+  const roll  = THREE.MathUtils.radToDeg(e.y);
+  const az    = THREE.MathUtils.radToDeg(e.z);
+  return { az:((az%360)+360)%360, pitch, roll };
+}
+
+// Mostrar botón de sensores si está disponible
+if (window.DeviceOrientationEvent){ addOverlay(); }
 </script>
 </body>
 </html>
-
-
