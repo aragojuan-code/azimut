@@ -2,248 +2,204 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <title>Azimut 3D – Prototipo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Pieza 3D asimétrica – Definición + Visor</title>
   <style>
-    :root {
-      --ok: #2ecc71; /* verde */
-      --bad: #e74c3c; /* rojo */
-      --bg: #0b0f14;
-      --fg: #e6eef7;
-    }
-    html, body {
-      height: 100%;
-      margin: 0;
-      background: var(--bg);
-      color: var(--fg);
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      touch-action: none;
-    }
-    .app {
-      display: grid;
-      grid-template-rows: auto 1fr auto;
-      min-height: 100dvh;
-      padding: 24px 18px;
-      box-sizing: border-box;
-      gap: 24px;
-    }
-    .target {
-      text-align: center;
-      font-size: 18px;
-      letter-spacing: 0.5px;
-      opacity: 0.9;
-      user-select: none;
-    }
-    .dots {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 28px;
-    }
-    .dot {
-      width: 72px;
-      height: 72px;
-      border-radius: 999px;
-      background: var(--bad);
-      box-shadow: 0 0 0 4px rgba(255,255,255,0.06) inset,
-                  0 10px 25px rgba(0,0,0,0.35);
-      transition: background 120ms linear, transform 120ms ease;
-    }
-    .dot.ok { background: var(--ok); transform: scale(1.02); }
-
-    .start-overlay {
-      position: fixed;
-      inset: 0;
-      display: grid;
-      place-items: center;
-      background: linear-gradient(180deg, rgba(9,12,17,0.96), rgba(9,12,17,0.96));
-      z-index: 10;
-    }
-    .start-card {
-      text-align: center;
-      padding: 22px 20px;
-      border-radius: 16px;
-      background: rgba(255,255,255,0.04);
-      backdrop-filter: blur(6px);
-      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
-      max-width: 520px;
-      margin: 0 16px;
-    }
-    .start-card h1 { font-size: 20px; margin: 0 0 8px; }
-    .start-card p { opacity: .85; font-size: 14px; margin: 0 0 16px; }
-    .btn {
-      -webkit-tap-highlight-color: transparent;
-      appearance: none;
-      border: none;
-      border-radius: 999px;
-      padding: 14px 18px;
-      font-size: 16px;
-      font-weight: 600;
-      color: #0b0f14;
-      background: #e6eef7;
-      box-shadow: 0 6px 16px rgba(0,0,0,0.35);
-    }
-    .btn:active { transform: translateY(1px); }
-
-    .footer { height: 1px; }
+    html, body { height: 100%; margin: 0; background: #0b0f14; color: #e6eef7; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial; }
+    .wrap { display: grid; grid-template-columns: 360px 1fr; min-height: 100vh; }
+    aside { padding: 18px 16px; border-right: 1px solid rgba(255,255,255,.08); overflow: auto; }
+    pre { white-space: pre-wrap; word-break: break-word; background: rgba(255,255,255,.04); padding: 12px; border-radius: 10px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; }
+    #scene { position: relative; }
+    canvas { display: block; width: 100%; height: 100%; }
+    .hint { opacity: .8; font-size: 12px; }
+    .badge { display:inline-block; padding:4px 8px; border-radius:999px; background:#1e293b; font-size:11px; margin-bottom:6px; }
   </style>
 </head>
 <body>
-  <div class="app">
-    <!-- Arriba: dirección objetivo (texto minimal) -->
-    <div class="target" id="targetText">—</div>
-
-    <!-- Centro: tres bolitas sin etiquetas -->
-    <div class="dots">
-      <div class="dot" id="dotA"></div>
-      <div class="dot" id="dotP"></div>
-      <div class="dot" id="dotR"></div>
-    </div>
-
-    <div class="footer"></div>
+  <div class="wrap">
+    <aside>
+      <div class="badge">Definición matemática (unidad ≈ 1)</div>
+      <pre><code id="math"></code></pre>
+      <p class="hint">Arrastra con el ratón / dedo para orbitar. Rueda / pellizca para zoom. Pulsa <b>Espacio</b> para alternar <i>proyección de sombra</i>.</p>
+    </aside>
+    <div id="scene"></div>
   </div>
 
-  <!-- Overlay de inicio para pedir permiso de sensores (iOS exige gesto del usuario) -->
-  <div class="start-overlay" id="startOverlay">
-    <div class="start-card">
-      <h1>Azimut 3D</h1>
-      <p>Toca para iniciar y permitir los sensores de orientación.</p>
-      <button class="btn" id="startBtn">Empezar</button>
-    </div>
-  </div>
+  <!-- Three.js + OrbitControls desde CDN -->
+  <script src="https://unpkg.com/three@0.161.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.161.0/examples/js/controls/OrbitControls.js"></script>
 
   <script>
-    // ===== Utilidades =====
-    const TOL = 15; // tolerancia fija en grados (simple, sin niveles)
-    const HOLD_MS = 500; // tiempo que deben estar las 3 en verde para validar
+  // ==========================
+  // 1) Definición matemática
+  // ==========================
+  // Pirámide oblicua con base triangular ESCALENA y ápice desplazado
+  // Vértices (en unidades arbitrarias):
+  const V = {
+    B1: new THREE.Vector3( 0.00, 0.00, 0.00),
+    B2: new THREE.Vector3( 1.30, 0.20, 0.00),
+    B3: new THREE.Vector3(-0.40, 1.10, 0.00),
+    A : new THREE.Vector3( 0.18,-0.12, 1.10), // ápice oblicuo
+  };
 
-    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+  // Caras triangulares: cada cara define también una zona donde irá un cilindro
+  // Índices y parámetros de salientes (uno por cara, todos distintos):
+  const FACES = [
+    // id, vertices,   cilindro: {altura h, radio r, tilt grados, offset baricéntrico (u,v,w)}
+    { id:'F1', verts:['A','B1','B2'], cyl:{ h:0.25, r:0.10, tilt:  6, offset:[0.20,0.30,0.50] } },
+    { id:'F2', verts:['A','B2','B3'], cyl:{ h:0.40, r:0.08, tilt: 11, offset:[0.15,0.70,0.15] } },
+    { id:'F3', verts:['A','B3','B1'], cyl:{ h:0.60, r:0.12, tilt:  4, offset:[0.55,0.25,0.20] } },
+    // Opcional: saliente en la base. Descomenta para añadir un cuarto cilindro.
+    { id:'BASE', verts:['B1','B2','B3'], cyl:{ h:0.85, r:0.06, tilt: 15, offset:[0.30,0.15,0.55] } },
+  ];
 
-    // Diferencia angular mínima en círculo 0..360
-    function deltaAngle360(a, b) {
-      let d = Math.abs(a - b) % 360;
-      return d > 180 ? 360 - d : d;
+  // Utilidad: combinación baricéntrica p = u*P1 + v*P2 + w*P3, con u+v+w=1
+  function baryPoint(u,v,w, P1,P2,P3){
+    return new THREE.Vector3().addScaledVector(P1,u).addScaledVector(P2,v).addScaledVector(P3,w);
+  }
+
+  // ==========================
+  // 2) Construcción de la malla
+  // ==========================
+  function buildPyramid(){
+    const geom = new THREE.BufferGeometry();
+    const verts = [];
+    const pushTri = (p,q,r)=>{ verts.push(p.x,p.y,p.z, q.x,q.y,q.z, r.x,r.y,r.z); };
+    // Caras laterales
+    pushTri(V.A, V.B1, V.B2);
+    pushTri(V.A, V.B2, V.B3);
+    pushTri(V.A, V.B3, V.B1);
+    // Base
+    pushTri(V.B1, V.B2, V.B3);
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(verts,3));
+    geom.computeVertexNormals();
+    return geom;
+  }
+
+  // Crear cilindro sobre una cara (con tilt y offset únicos)
+  function cylinderOnFace(face){
+    const [a,b,c] = face.verts.map(k=>V[k]);
+    const p = baryPoint(face.cyl.offset[0], face.cyl.offset[1], face.cyl.offset[2], a,b,c);
+    // Normal de la cara
+    const ab = new THREE.Vector3().subVectors(b,a);
+    const ac = new THREE.Vector3().subVectors(c,a);
+    const n  = new THREE.Vector3().crossVectors(ab,ac).normalize();
+
+    // Crear eje con un tilt (inclinación) respecto a la normal
+    const axis = n.clone();
+    // Tilt alrededor de un vector en el plano de la cara (usa ab normalizado)
+    const tiltAxis = ab.clone().normalize();
+    const m = new THREE.Matrix4().makeRotationAxis(tiltAxis, THREE.MathUtils.degToRad(face.cyl.tilt));
+    axis.applyMatrix4(m).normalize();
+
+    // Geometría del cilindro (altura h, radio r):
+    const h = face.cyl.h, r = face.cyl.r;
+    const g = new THREE.CylinderGeometry(r, r, h, 24);
+    const mat = new THREE.MeshStandardMaterial({ color: 0xd46f4d, roughness: 0.6, metalness: 0.1 });
+    const cyl = new THREE.Mesh(g, mat);
+
+    // Orientar cilindro para que su eje Y coincida con 'axis'
+    // Por defecto, el eje del cilindro es +Y. Calculamos cuaternión de Y->axis
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), axis);
+    cyl.quaternion.copy(q);
+
+    // Colocar su centro en p + axis*(h/2) para que “salga” de la cara
+    const center = p.clone().addScaledVector(axis, h/2);
+    cyl.position.copy(center);
+
+    return cyl;
+  }
+
+  // ==========================
+  // 3) Escena Three.js
+  // ==========================
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0b0f14);
+
+  const renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer.setSize(window.innerWidth - 360, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  document.getElementById('scene').appendChild(renderer.domElement);
+
+  const camera = new THREE.PerspectiveCamera(45, (window.innerWidth-360)/window.innerHeight, 0.01, 100);
+  camera.position.set(2.2, -2.0, 1.6);
+  camera.lookAt(0.3,0.3,0.4);
+
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+
+  // Luz direccional (para sombras)
+  const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+  dir.position.set(2.5, 1.5, 3.0);
+  dir.castShadow = true;
+  dir.shadow.mapSize.set(2048,2048);
+  scene.add(dir);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+
+  // Plano receptor (para ver la proyección/sombra)
+  const plane = new THREE.Mesh(
+    new THREE.PlaneGeometry(6,6),
+    new THREE.ShadowMaterial({ opacity: 0.35 })
+  );
+  plane.rotation.x = -Math.PI/2;
+  plane.position.z = -0.2; // ligeramente por debajo
+  plane.receiveShadow = true;
+  scene.add(plane);
+
+  // Material del poliedro
+  const polyMat = new THREE.MeshStandardMaterial({ color: 0xf0b27a, metalness: 0.05, roughness: 0.65 });
+
+  // Pirámide
+  const pyramid = new THREE.Mesh(buildPyramid(), polyMat);
+  pyramid.castShadow = true;
+  scene.add(pyramid);
+
+  // Salientes
+  const group = new THREE.Group();
+  FACES.forEach(fc => group.add(cylinderOnFace(fc)));
+  group.traverse(o=>{ if(o.isMesh){ o.castShadow = true; }});
+  scene.add(group);
+
+  // Texto matemático en el panel
+  const mathEl = document.getElementById('math');
+  const fmt = (v)=>`(${v.x.toFixed(2)}, ${v.y.toFixed(2)}, ${v.z.toFixed(2)})`;
+  const lines = [];
+  lines.push('Vértices:');
+  lines.push(`  A  = ${fmt(V.A)}`);
+  lines.push(`  B1 = ${fmt(V.B1)}`);
+  lines.push(`  B2 = ${fmt(V.B2)}`);
+  lines.push(`  B3 = ${fmt(V.B3)}`);
+  lines.push('\nCaras (triángulos):');
+  FACES.forEach(f=>{ lines.push(`  ${f.id}: ${f.verts.join('-')}`); });
+  lines.push('\nSalientes por cara (cilindros):');
+  FACES.forEach(f=>{
+    const c = f.cyl; lines.push(`  ${f.id}: h=${c.h}, r=${c.r}, tilt=${c.tilt}°, offset=[${c.offset.map(n=>n.toFixed(2)).join(', ')}]`);
+  });
+  mathEl.textContent = lines.join('\n');
+
+  // Alternar plano receptor/sombra con barra espaciadora
+  let showShadow = true;
+  window.addEventListener('keydown', (e)=>{
+    if(e.code === 'Space'){
+      showShadow = !showShadow;
+      plane.visible = showShadow;
     }
+  });
 
-    // Diferencia absoluta para ángulos -180..180
-    function deltaAngle180(a, b) {
-      let d = (a - b);
-      while (d > 180) d -= 360;
-      while (d < -180) d += 360;
-      return Math.abs(d);
-    }
+  // Resize
+  window.addEventListener('resize', ()=>{
+    const w = window.innerWidth - 360; const h = window.innerHeight;
+    renderer.setSize(w,h); camera.aspect = w/h; camera.updateProjectionMatrix();
+  });
 
-    // Formato de los objetivos en texto minimal
-    function fmtTarget(t) {
-      const az = Math.round(t.az);
-      const p  = Math.round(t.pitch);
-      const r  = Math.round(t.roll);
-      const sign = (x)=> (x>0? "+" : (x<0? "−" : "±"));
-      return `${az}° / ${sign(p)}${Math.abs(p)}° / ${sign(r)}${Math.abs(r)}°`;
-    }
-
-    // Generación de objetivo sencillo, cómodo para el cuello y muñeca
-    function newTarget() {
-      return {
-        az: Math.random() * 360,        // 0..360
-        pitch: (Math.random() * 90) - 15, // −15..+75 aprox
-        roll:  (Math.random() * 80) - 40  // −40..+40
-      };
-    }
-
-    // ===== Estado =====
-    let target = newTarget();
-    let lastAllOkAt = 0;
-    let started = false;
-
-    const targetText = document.getElementById('targetText');
-    const dotA = document.getElementById('dotA');
-    const dotP = document.getElementById('dotP');
-    const dotR = document.getElementById('dotR');
-    const startOverlay = document.getElementById('startOverlay');
-    const startBtn = document.getElementById('startBtn');
-
-    function applyTargetText() {
-      targetText.textContent = fmtTarget(target);
-    }
-    applyTargetText();
-
-    // ===== Lectura de sensores (DeviceOrientation) =====
-    let hasCompassHeading = false;
-
-    function onOrientation(e) {
-      if (!started) return;
-
-      // iOS: webkitCompassHeading (0=Norte, creciente hacia la derecha) si existe
-      let az;
-      if (typeof e.webkitCompassHeading === 'number') {
-        az = e.webkitCompassHeading; // ya 0..360
-        hasCompassHeading = true;
-      } else if (typeof e.alpha === 'number') {
-        // alpha: 0..360, pero puede necesitar ajustes según el frame de referencia
-        az = 360 - e.alpha; // invertir para aproximar a brújula tradicional
-        if (az < 0) az += 360;
-      } else {
-        az = 0;
-      }
-
-      // beta ~ pitch (−180..180). En la práctica útil ~ −90..90
-      // gamma ~ roll (−90..90)
-      const pitch = clamp(e.beta ?? 0, -90, 90);
-      const roll  = clamp(e.gamma ?? 0, -90, 90);
-
-      // Calcular si cada eje está dentro de tolerancia
-      const okA = deltaAngle360(az, target.az) <= TOL;
-      const okP = Math.abs(pitch - target.pitch) <= TOL;
-      const okR = deltaAngle180(roll, target.roll) <= TOL;
-
-      dotA.classList.toggle('ok', okA);
-      dotP.classList.toggle('ok', okP);
-      dotR.classList.toggle('ok', okR);
-
-      const now = performance.now();
-      if (okA && okP && okR) {
-        if (lastAllOkAt === 0) lastAllOkAt = now;
-        if (now - lastAllOkAt >= HOLD_MS) {
-          // Nuevo objetivo
-          target = newTarget();
-          applyTargetText();
-          lastAllOkAt = 0;
-          // breve flash visual opcional
-          document.body.animate([
-            { filter: 'brightness(1.0)' },
-            { filter: 'brightness(1.25)' },
-            { filter: 'brightness(1.0)' }
-          ], { duration: 220, easing: 'ease-out' });
-        }
-      } else {
-        lastAllOkAt = 0;
-      }
-    }
-
-    // ===== Inicio con permiso (iOS requiere gesto del usuario) =====
-    async function startSensors() {
-      try {
-        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-          const perm = await DeviceOrientationEvent.requestPermission();
-          if (perm !== 'granted') throw new Error('Permiso denegado');
-        }
-        window.addEventListener('deviceorientation', onOrientation, { passive: true });
-        startOverlay.style.display = 'none';
-        started = true;
-      } catch (err) {
-        alert('No se pudieron activar los sensores: ' + (err && err.message ? err.message : err));
-      }
-    }
-
-    startBtn.addEventListener('click', startSensors);
-
-    // Mejora: re-generar objetivo al rotar de orientación de pantalla (opcional)
-    window.addEventListener('orientationchange', () => {
-      // sin lógica extra por ahora, mantenemos el objetivo actual
-    });
+  // Animación
+  (function loop(){
+    controls.update();
+    renderer.render(scene, camera);
+    requestAnimationFrame(loop);
+  })();
   </script>
 </body>
 </html>
