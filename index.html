@@ -27,107 +27,74 @@
     <div id="scene"><div id="err" class="err"></div></div>
   </div>
 
-  <!-- Three.js + OrbitControls desde CDN -->
-<script src="./lib/three/0.161.0/three.min.js"></script>
-<script src="./lib/three/0.161.0/three.min.js"></script>
+  <script type="module">
+// Usamos ES Modules con versiones CONSISTENTES desde jsDelivr
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js';
+import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/controls/OrbitControls.js';
 
+const sceneEl = document.getElementById('scene');
+const errEl   = document.getElementById('err');
+function showErr(msg){ if(errEl){ errEl.style.display='block'; errEl.textContent=msg; } }
 
-  <script>
-// --- Build a minimal working viewer (safe version) ---
-// If you still don't see it, the problem is not the 3D code.
-(function(){
-  const sceneEl = document.getElementById('scene');
-  const errEl   = document.getElementById('err');
-  function showErr(msg){ if(errEl){ errEl.style.display='block'; errEl.textContent=msg; } }
-  if(!window.THREE){ showErr('No se cargó Three.js'); return; }
+// ===== Escena básica =====
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio||1));
+sceneEl.appendChild(renderer.domElement);
 
-  // Scene & renderer
-  const scene = new THREE.Scene();
-  const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio||1));
-  sceneEl.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
+camera.position.set(2.6, 2.0, 2.2);
 
-  const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
-  camera.position.set(2.6, 2.0, 2.2);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
 
-  const controls = new THREE.OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
+scene.add(new THREE.AxesHelper(1.2));
+const grid = new THREE.GridHelper(8, 16, 0x334155, 0x1f2937); grid.rotation.x=Math.PI/2; grid.position.z=-0.2; scene.add(grid);
 
-  // Helpers
-  scene.add(new THREE.AxesHelper(1.2));
-  const g = new THREE.GridHelper(8, 16, 0x334155, 0x1f2937); g.rotation.x=Math.PI/2; g.position.z=-0.2; scene.add(g);
+// ===== Geometría: pirámide oblicua + cilindros =====
+const V = {
+  B1: new THREE.Vector3(0.00, 0.00, 0.00),
+  B2: new THREE.Vector3(1.30, 0.20, 0.00),
+  B3: new THREE.Vector3(-0.40, 1.10, 0.00),
+  A : new THREE.Vector3(0.18,-0.12, 1.10),
+};
+function pyramidGeom(){
+  const geom=new THREE.BufferGeometry(); const v=[];
+  const push=(a,b,c)=>v.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z);
+  push(V.A,V.B1,V.B2); push(V.A,V.B2,V.B3); push(V.A,V.B3,V.B1); push(V.B1,V.B2,V.B3);
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(v,3)); geom.computeVertexNormals(); return geom;
+}
+const pyramid=new THREE.Mesh(pyramidGeom(), new THREE.MeshNormalMaterial()); scene.add(pyramid);
 
-  // --- Geometry: Asymmetric pyramid + cylinders ---
-  const V = {
-    B1: new THREE.Vector3(0.00, 0.00, 0.00),
-    B2: new THREE.Vector3(1.30, 0.20, 0.00),
-    B3: new THREE.Vector3(-0.40, 1.10, 0.00),
-    A : new THREE.Vector3(0.18,-0.12, 1.10),
-  };
+const faces=[
+  { verts:['A','B1','B2'], h:0.25, r:0.10, tilt:6,  off:[0.20,0.30,0.50] },
+  { verts:['A','B2','B3'], h:0.40, r:0.08, tilt:11, off:[0.15,0.70,0.15] },
+  { verts:['A','B3','B1'], h:0.60, r:0.12, tilt:4,  off:[0.55,0.25,0.20] },
+  { verts:['B1','B2','B3'], h:0.85, r:0.06, tilt:15, off:[0.30,0.15,0.55] },
+];
+function bary([u,v,w], P,Q,R){ return new THREE.Vector3().addScaledVector(P,u).addScaledVector(Q,v).addScaledVector(R,w); }
+function cylOnFace(f){
+  const a=V[f.verts[0]], b=V[f.verts[1]], c=V[f.verts[2]];
+  const p=bary(f.off,a,b,c);
+  const n=new THREE.Vector3().crossVectors(new THREE.Vector3().subVectors(b,a), new THREE.Vector3().subVectors(c,a)).normalize();
+  const axis=n.clone(); const tiltAxis=new THREE.Vector3().subVectors(b,a).normalize();
+  axis.applyAxisAngle(tiltAxis, THREE.MathUtils.degToRad(f.tilt));
+  const mesh=new THREE.Mesh(new THREE.CylinderGeometry(f.r,f.r,f.h,24), new THREE.MeshNormalMaterial());
+  const q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), axis); mesh.quaternion.copy(q);
+  mesh.position.copy(p.clone().addScaledVector(axis, f.h/2));
+  return mesh;
+}
+const group=new THREE.Group(); faces.forEach(fc=>group.add(cylOnFace(fc))); scene.add(group);
 
-  function pyramidGeom(){
-    const geom = new THREE.BufferGeometry();
-    const push=(a,b,c)=>verts.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z);
-    const verts=[];
-    push(V.A,V.B1,V.B2);
-    push(V.A,V.B2,V.B3);
-    push(V.A,V.B3,V.B1);
-    push(V.B1,V.B2,V.B3);
-    geom.setAttribute('position', new THREE.Float32BufferAttribute(verts,3));
-    geom.computeVertexNormals();
-    return geom;
-  }
+function resize(){
+  const asideW = document.querySelector('aside')?.offsetWidth || 360;
+  const w = Math.max(1, window.innerWidth - asideW);
+  const h = Math.max(1, window.innerHeight);
+  renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix();
+}
+resize(); window.addEventListener('resize', resize); window.addEventListener('orientationchange', ()=>setTimeout(resize,100));
 
-  const matPoly = new THREE.MeshNormalMaterial({flatShading:false});
-  const pyramid = new THREE.Mesh(pyramidGeom(), matPoly);
-  scene.add(pyramid);
-
-  // Cylinders on faces
-  const faces = [
-    { verts:['A','B1','B2'], h:0.25, r:0.10, tilt: 6,  off:[0.20,0.30,0.50]},
-    { verts:['A','B2','B3'], h:0.40, r:0.08, tilt:11,  off:[0.15,0.70,0.15]},
-    { verts:['A','B3','B1'], h:0.60, r:0.12, tilt: 4,  off:[0.55,0.25,0.20]},
-    { verts:['B1','B2','B3'],h:0.85, r:0.06, tilt:15,  off:[0.30,0.15,0.55]},
-  ];
-  function bary([u,v,w], P,Q,R){ return new THREE.Vector3().addScaledVector(P,u).addScaledVector(Q,v).addScaledVector(R,w); }
-  function cylOnFace(f){
-    const a=V[f.verts[0]], b=V[f.verts[1]], c=V[f.verts[2]];
-    const p=bary(f.off,a,b,c);
-    const ab=new THREE.Vector3().subVectors(b,a);
-    const ac=new THREE.Vector3().subVectors(c,a);
-    const n=new THREE.Vector3().crossVectors(ab,ac).normalize();
-    const axis=n.clone();
-    const tiltAxis=ab.clone().normalize();
-    axis.applyAxisAngle(tiltAxis, THREE.MathUtils.degToRad(f.tilt));
-    const g=new THREE.CylinderGeometry(f.r,f.r,f.h,24);
-    const m=new THREE.MeshNormalMaterial();
-    const mesh=new THREE.Mesh(g,m);
-    const q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), axis);
-    mesh.quaternion.copy(q);
-    mesh.position.copy(p.clone().addScaledVector(axis, f.h/2));
-    return mesh;
-  }
-  const group=new THREE.Group(); faces.forEach(fc=>group.add(cylOnFace(fc))); scene.add(group);
-
-  function resize(){
-    const asideW = document.querySelector('aside')?.offsetWidth || 360;
-    const w = Math.max(1, window.innerWidth - asideW);
-    const h = Math.max(1, window.innerHeight);
-    renderer.setSize(w,h,false);
-    camera.aspect = w/h; camera.updateProjectionMatrix();
-  }
-  resize();
-  window.addEventListener('resize', resize);
-  window.addEventListener('orientationchange', ()=>setTimeout(resize,100));
-
-  (function loop(){
-    pyramid.rotation.z += 0.01; group.rotation.z += 0.01;
-    controls.update(); renderer.render(scene,camera); requestAnimationFrame(loop);
-  })();
-})();
+(function loop(){ pyramid.rotation.z+=0.01; group.rotation.z+=0.01; controls.update(); renderer.render(scene,camera); requestAnimationFrame(loop); })();
 </script>
 </body>
 </html>
-
-
-
